@@ -1,3 +1,5 @@
+import { showBigPicture } from './big-photo.js';
+
 const picturesContainer = document.querySelector('.pictures');
 const pictureTemplate = document
   .querySelector('#picture')
@@ -7,14 +9,22 @@ const pictureTemplate = document
 const renderPhoto = (photo) => {
   const { url, description, likes, comments } = photo;
 
-  const pictureElement = pictureTemplate.cloneNode(true);
+  const element = pictureTemplate.cloneNode(true);
 
-  pictureElement.querySelector('.picture__img').src = url;
-  pictureElement.querySelector('.picture__img').alt = description;
-  pictureElement.querySelector('.picture__likes').textContent = likes;
-  pictureElement.querySelector('.picture__comments').textContent = comments.length;
+  const img = element.querySelector('.picture__img');
+  img.src = url;
+  img.alt = description;
 
-  return pictureElement;
+  element.querySelector('.picture__likes').textContent = likes;
+  element.querySelector('.picture__comments').textContent = comments.length;
+
+  // Открытие полноразмерного фото
+  element.addEventListener('click', (evt) => {
+    evt.preventDefault();
+    showBigPicture(photo);
+  });
+
+  return element;
 };
 
 const renderPictures = (photos) => {
