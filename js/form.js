@@ -43,6 +43,7 @@ function onEscKeydown(evt) {
   }
 }
 
+// Открытие формы с загруженным пользовательским изображением
 function openForm() {
   overlay.classList.remove('hidden');
   body.classList.add('modal-open');
