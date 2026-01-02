@@ -12,7 +12,7 @@ const loadPhotos = () =>
     .then(checkResponse);
 
 const sendData = (formData) =>
-  fetch(BASE_URL, {
+  fetch(`${BASE_URL}/`, {
     method: 'POST',
     body: formData,
   })

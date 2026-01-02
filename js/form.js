@@ -1,25 +1,67 @@
 import './vendor/pristine/pristine.min.js';
 import './vendor/nouislider/nouislider.js';
-
+import { isEscapeKey } from './utils.js';
 import { sendData } from './api.js';
 import { showSuccessMessage, showErrorMessage } from './messages.js';
 
+const MIN_SCALE = 25;
+const MAX_SCALE = 100;
+const SCALE_STEP = 25;
+const MAX_COMMENT_LENGTH = 140;
+
+const EFFECTS = {
+  chrome: {
+    min: 0,
+    max: 1,
+    step: 0.1,
+    filter: (v) => `grayscale(${v})`
+  },
+  sepia: {
+    min: 0,
+    max: 1,
+    step: 0.1,
+    filter: (v) => `sepia(${v})`
+  },
+  marvin: {
+    min: 0,
+    max: 100,
+    step: 1,
+    filter: (v) => `invert(${v}%)`
+  },
+  phobos: {
+    min: 0,
+    max: 3,
+    step: 0.1,
+    filter: (v) => `blur(${v}px)`
+  },
+  heat: {
+    min: 1,
+    max: 3,
+    step: 0.1,
+    filter: (v) => `brightness(${v})`
+  }
+};
+
+const MAX_HASHTAGS = 5;
+const HASHTAG_PATTERN = /^#[a-zа-яё0-9]{1,19}$/i;
+
 const body = document.body;
-const uploadInput = document.querySelector('#upload-file');
-const overlay = document.querySelector('.img-upload__overlay');
-const closeButton = document.querySelector('#upload-cancel');
-
-const scaleSmaller = document.querySelector('.scale__control--smaller');
-const scaleBigger = document.querySelector('.scale__control--bigger');
-const scaleValue = document.querySelector('.scale__control--value');
-const previewImg = document.querySelector('.img-upload__preview img');
-
-const effectsList = document.querySelector('.effects__list');
-const sliderContainer = document.querySelector('.img-upload__effect-level');
-const sliderElement = document.querySelector('.effect-level__slider');
-const effectValue = document.querySelector('.effect-level__value');
-
 const form = document.querySelector('.img-upload__form');
+
+const uploadInput = form.querySelector('#upload-file');
+const overlay = form.querySelector('.img-upload__overlay');
+const closeButton = form.querySelector('#upload-cancel');
+
+const scaleSmaller = form.querySelector('.scale__control--smaller');
+const scaleBigger = form.querySelector('.scale__control--bigger');
+const scaleValue = form.querySelector('.scale__control--value');
+
+const previewImg = form.querySelector('.img-upload__preview img');
+const effectsList = form.querySelector('.effects__list');
+const sliderContainer = form.querySelector('.img-upload__effect-level');
+const sliderElement = form.querySelector('.effect-level__slider');
+const effectValue = form.querySelector('.effect-level__value');
+
 const hashtagsInput = form.querySelector('.text__hashtags');
 const commentInput = form.querySelector('.text__description');
 
@@ -32,18 +74,19 @@ const pristine = new Pristine(form, {
 let currentScale = 100;
 
 function onEscKeydown(evt) {
-  if (evt.key === 'Escape') {
-    if (
-      document.activeElement !== hashtagsInput &&
-      document.activeElement !== commentInput
-    ) {
-      evt.preventDefault();
-      closeForm();
-    }
+  if (document.querySelector('.error')) {
+    return;
+  }
+
+  if (
+    isEscapeKey(evt) &&
+    document.activeElement !== hashtagsInput &&
+    document.activeElement !== commentInput
+  ) {
+    evt.preventDefault();
+    closeForm();
   }
 }
-
-// Открытие формы с загруженным пользовательским изображением
 function openForm() {
   overlay.classList.remove('hidden');
   body.classList.add('modal-open');
@@ -51,11 +94,13 @@ function openForm() {
 
   const file = uploadInput.files[0];
   if (file) {
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      previewImg.src = e.target.result;
-    };
-    reader.readAsDataURL(file);
+    const objectUrl = URL.createObjectURL(file);
+    previewImg.src = objectUrl;
+
+    const effectPreviews = document.querySelectorAll('.effects__preview');
+    effectPreviews.forEach((preview) => {
+      preview.style.backgroundImage = `url('${objectUrl}')`;
+    });
   }
 
   initSlider('none');
@@ -95,62 +140,57 @@ function closeForm() {
 }
 
 function initSlider(effect) {
-  const EFFECTS = {
-    chrome: { min: 0, max: 1, step: 0.1, filter: (v) => `grayscale(${v})` },
-    sepia: { min: 0, max: 1, step: 0.1, filter: (v) => `sepia(${v})` },
-    marvin: { min: 0, max: 100, step: 1, filter: (v) => `invert(${v}%)` },
-    phobos: { min: 0, max: 3, step: 0.1, filter: (v) => `blur(${v}px)` },
-    heat: { min: 1, max: 3, step: 0.1, filter: (v) => `brightness(${v})` },
-    none: null
-  };
-
   if (sliderElement.noUiSlider) {
     sliderElement.noUiSlider.destroy();
   }
 
+  previewImg.style.filter = '';
+  effectValue.value = '';
+
   if (effect === 'none') {
     sliderContainer.classList.add('hidden');
-    previewImg.style.filter = '';
-    effectValue.value = '';
-    previewImg.className = '';
-    previewImg.classList.add('effects__preview--none');
+    previewImg.className = 'effects__preview--none';
     return;
   }
 
   sliderContainer.classList.remove('hidden');
+  previewImg.className = `effects__preview--${effect}`;
 
-  previewImg.className = '';
-  previewImg.classList.add(`effects__preview--${effect}`);
-
-  const cfg = EFFECTS[effect];
+  const effectConfig = EFFECTS[effect];
 
   noUiSlider.create(sliderElement, {
-    range: { min: cfg.min, max: cfg.max },
-    start: cfg.max,
-    step: cfg.step,
+    range: {
+      min: effectConfig.min,
+      max: effectConfig.max
+    },
+    start: effectConfig.max,
+    step: effectConfig.step,
     connect: 'lower'
   });
 
+  effectValue.value = effectConfig.max;
+  previewImg.style.filter = effectConfig.filter(effectConfig.max);
+
   sliderElement.noUiSlider.on('update', (values) => {
-    const value = values[0];
+    const value = Number(values[0]);
     effectValue.value = value;
-    previewImg.style.filter = cfg.filter(value);
+    previewImg.style.filter = effectConfig.filter(value);
   });
 }
 
 scaleValue.value = '100%';
 
 scaleSmaller.addEventListener('click', () => {
-  if (currentScale > 25) {
-    currentScale -= 25;
+  if (currentScale > MIN_SCALE) {
+    currentScale -= SCALE_STEP;
     scaleValue.value = `${currentScale}%`;
     previewImg.style.transform = `scale(${currentScale / 100})`;
   }
 });
 
 scaleBigger.addEventListener('click', () => {
-  if (currentScale < 100) {
-    currentScale += 25;
+  if (currentScale < MAX_SCALE) {
+    currentScale += SCALE_STEP;
     scaleValue.value = `${currentScale}%`;
     previewImg.style.transform = `scale(${currentScale / 100})`;
   }
@@ -173,119 +213,65 @@ effectsList.addEventListener('change', (evt) => {
   }
 });
 
-hashtagsInput.addEventListener('keydown', (evt) => {
-  if (evt.key === 'Escape') {
-    evt.stopPropagation();
-  }
-});
-
-commentInput.addEventListener('keydown', (evt) => {
-  if (evt.key === 'Escape') {
-    evt.stopPropagation();
-  }
-});
-
-const MAX_HASHTAGS = 5;
-const HASHTAG_PATTERN = /^#[a-z0-9]{1,19}$/i;
-
-const getHashtags = (value) => {
-  const trimmed = value.trim();
-  if (!trimmed) {
-    return [];
-  }
-  return trimmed.split(/\s+/).filter((tag) => tag.length > 0);
-};
-
-const validateHashtagNoSingleHash = (value) => {
-  const tags = getHashtags(value);
-  if (tags.length === 0) {
-    return true;
-  }
-  return tags.every((tag) => tag !== '#');
-};
-
-const validateHashtagMaxLength = (value) => {
-  const tags = getHashtags(value);
-  if (tags.length === 0) {
-    return true;
-  }
-  return tags.every((tag) => tag.length <= 20);
-};
-
-const validateHashtagFormat = (value) => {
-  const tags = getHashtags(value);
-  if (tags.length === 0) {
-    return true;
-  }
-  return tags.every((tag) => HASHTAG_PATTERN.test(tag));
-};
-
-const validateHashtagCount = (value) => {
-  const tags = getHashtags(value);
-  return tags.length <= MAX_HASHTAGS;
-};
-
-const validateHashtagUniq = (value) => {
-  const tags = getHashtags(value);
-  const lowerCaseTags = tags.map((tag) => tag.toLowerCase());
-  return new Set(lowerCaseTags).size === tags.length;
-};
-
-const validateComment = (value) => value.length <= 140;
+const getHashtags = (value) =>
+  value.trim() ? value.trim().split(/\s+/) : [];
 
 pristine.addValidator(
   hashtagsInput,
-  validateHashtagNoSingleHash,
+  (value) => getHashtags(value).every((tag) => tag !== '#'),
   'Хэштег не может состоять только из #'
 );
 
 pristine.addValidator(
   hashtagsInput,
-  validateHashtagMaxLength,
+  (value) => getHashtags(value).every((tag) => tag.length <= 20),
   'Максимальная длина хэштега 20 символов'
 );
 
 pristine.addValidator(
   hashtagsInput,
-  validateHashtagFormat,
-  'Хэштег должен начинаться с # и содержать только буквы и цифры'
+  (value) => getHashtags(value).every((tag) => HASHTAG_PATTERN.test(tag)),
+  'Неверный формат хэштега'
 );
 
 pristine.addValidator(
   hashtagsInput,
-  validateHashtagCount,
-  'Нельзя больше 5 хэш-тегов'
+  (value) => getHashtags(value).length <= MAX_HASHTAGS,
+  'Нельзя больше 5 хэштегов'
 );
 
 pristine.addValidator(
   hashtagsInput,
-  validateHashtagUniq,
-  'Хэш-теги не должны повторяться'
+  (value) => {
+    const tags = getHashtags(value).map((t) => t.toLowerCase());
+    return new Set(tags).size === tags.length;
+  },
+  'Хэштеги не должны повторяться'
 );
 
 pristine.addValidator(
   commentInput,
-  validateComment,
+  (value) => value.length <= MAX_COMMENT_LENGTH,
   'Комментарий не более 140 символов'
 );
 
 form.addEventListener('submit', (evt) => {
   evt.preventDefault();
 
-  const isValid = pristine.validate();
-  if (!isValid) {
+  if (!pristine.validate()) {
     return;
   }
 
   const submitButton = form.querySelector('.img-upload__submit');
-  const originalButtonText = submitButton.textContent;
+  const originalText = submitButton.textContent;
+
   submitButton.disabled = true;
+  submitButton.setAttribute('disabled', 'disabled');
   submitButton.textContent = 'Публикую...';
 
   sendData(new FormData(form))
     .then(() => {
       closeForm();
-      form.reset();
       showSuccessMessage();
     })
     .catch(() => {
@@ -293,6 +279,8 @@ form.addEventListener('submit', (evt) => {
     })
     .finally(() => {
       submitButton.disabled = false;
-      submitButton.textContent = originalButtonText;
+      submitButton.removeAttribute('disabled');
+      submitButton.textContent = originalText;
     });
 });
+
